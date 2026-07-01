@@ -1,0 +1,30 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- outer ring (champagne) -->
+    <path
+        android:strokeColor="#F4D28A"
+        android:strokeWidth="2.6"
+        android:fillColor="#00000000"
+        android:pathData="M54,54 m-31,0 a31,31 0 1,0 62,0 a31,31 0 1,0 -62,0" />
+
+    <!-- mid ring (faint cyan) -->
+    <path
+        android:strokeColor="#5500F5D4"
+        android:strokeWidth="1.6"
+        android:fillColor="#00000000"
+        android:pathData="M54,54 m-21,0 a21,21 0 1,0 42,0 a21,21 0 1,0 -42,0" />
+
+    <!-- cyan core -->
+    <path
+        android:fillColor="#00F5D4"
+        android:pathData="M54,54 m-9,0 a9,9 0 1,0 18,0 a9,9 0 1,0 -18,0" />
+
+    <!-- broadcast spark -->
+    <path
+        android:fillColor="#FFF4D28A"
+        android:pathData="M54,16 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+</vector>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- MinePlayer core palette (mirrors index.html CSS variables) -->
+    <color name="mr_black">#FF000000</color>
+    <color name="mr_bg">#FF08090B</color>
+    <color name="mr_paper">#FF0E1014</color>
+    <color name="mr_ink">#FFE8ECEF</color>
+    <color name="mr_accent">#FF00F5D4</color>
+    <color name="mr_champagne">#FFF4D28A</color>
+    <color name="ic_launcher_background">#FFFFFFFF</color>
+    <!-- Cold-start window background; -night variant is black. Following the system theme
+         here avoids a black flash for light-mode users before the first frame draws. -->
+    <color name="mr_window">#FFF5F6F8</color>
+</resources>

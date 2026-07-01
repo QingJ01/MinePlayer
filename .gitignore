@@ -1,0 +1,28 @@
+# Built application files
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Gradle
+.gradle/
+build/
+/app/build/
+/captures
+.externalNativeBuild
+.cxx
+
+# Kotlin
+.kotlin/
+
+# Local configuration (machine-specific)
+local.properties
+
+# IntelliJ / Android Studio
+*.iml
+.idea/
+*.hprof
+
+# OS
+.DS_Store
+Thumbs.db
