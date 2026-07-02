@@ -16,6 +16,8 @@ data class Track(
     val dateAdded: Long = 0L,
     /** Absolute file path (from MediaStore DATA), used for folder include/exclude filtering. */
     val filePath: String? = null,
+    /** Nominal bitrate in bits/sec from MediaStore (0 if unavailable); feeds the quality badge. */
+    val bitrate: Int = 0,
 ) {
     val displayArtist: String
         get() = if (artist.isBlank() || artist == "<unknown>") "未知艺术家" else artist

@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.MediaStore
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,18 +65,20 @@ import com.mine.player.data.SettingsRepository
 import com.mine.player.ui.components.AddToPlaylistSheet
 import com.mine.player.ui.components.AppDrawer
 import com.mine.player.ui.components.BrowseTab
-import com.mine.player.ui.components.PlaceholderScreen
 import com.mine.player.ui.components.SleepTimerSheet
 import com.mine.player.ui.components.TrackActionSheet
 import com.mine.player.ui.components.TrackInfoSheet
 import com.mine.player.ui.components.TransportBar
 import com.mine.player.ui.screens.AlbumsScreen
+import com.mine.player.ui.components.AppNavRail
+import com.mine.player.ui.rememberWindowInfo
 import com.mine.player.ui.screens.ArtistsScreen
 import com.mine.player.ui.screens.CoverWallScreen
 import com.mine.player.ui.screens.LibraryScreen
 import com.mine.player.ui.screens.NowPlayingScreen
 import com.mine.player.ui.screens.PlaylistsScreen
 import com.mine.player.ui.screens.SettingsScreen
+import com.mine.player.ui.screens.StatsScreen
 import com.mine.player.ui.theme.LocalPalette
 import kotlinx.coroutines.launch
 
@@ -148,6 +152,7 @@ fun MinePlayerRoot(
         var showNowPlaying by remember { mutableStateOf(false) }
         var showCoverWall by remember { mutableStateOf(false) }
         var showSettings by remember { mutableStateOf(false) }
+        var showStats by remember { mutableStateOf(false) }
         var browseTab by remember { mutableStateOf(BrowseTab.SONGS) }
         val drawerState = rememberDrawerState(DrawerValue.Closed)
         val playlistStore = remember { PlaylistStore(context.applicationContext) }
@@ -161,6 +166,15 @@ fun MinePlayerRoot(
         var showSleepSheet by remember { mutableStateOf(false) }
         var pendingArtist by remember { mutableStateOf<String?>(null) }
         var pendingAlbumId by remember { mutableStateOf<Long?>(null) }
+        val win = rememberWindowInfo()
+
+        // "锁定横屏（平板模式）": pin the activity to landscape while enabled.
+        val activity = LocalContext.current as? Activity
+        LaunchedEffect(settings.forceLandscape) {
+            activity?.requestedOrientation =
+                if (settings.forceLandscape) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+                else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
 
         // Deleting a track uses the system delete-confirmation (scoped storage); reload on success.
         val deleteLauncher = rememberLauncherForActivityResult(
@@ -216,6 +230,7 @@ fun MinePlayerRoot(
                     onDefaultPreset = { scope.launch { settingsRepo.setDefaultPreset(it) } },
                     onDefaultLyric = { scope.launch { settingsRepo.setDefaultLyricMode(it) } },
                     onSensitivity = { scope.launch { settingsRepo.setSensitivity(it) } },
+                    onFlowStrength = { scope.launch { settingsRepo.setFlowStrength(it) } },
                     onMinDuration = { scope.launch { settingsRepo.setMinDuration(it) } },
                     onRescan = {
                         viewModel.loadLibrary(
@@ -239,11 +254,19 @@ fun MinePlayerRoot(
                     onExclusiveFocus = { scope.launch { settingsRepo.setExclusiveFocus(it) } },
                     onToggleNotification = { scope.launch { settingsRepo.setShowNotification(it) } },
                     onToggleCloseButton = { scope.launch { settingsRepo.setShowCloseButton(it) } },
+                    onToggleCar = { scope.launch { settingsRepo.setCarBrowsing(it) } },
+                    onForceLandscape = { scope.launch { settingsRepo.setForceLandscape(it) } },
+                    onCoverLyrics = { scope.launch { settingsRepo.setCoverLyrics(it) } },
                     onReplayGain = { scope.launch { settingsRepo.setReplayGain(it) } },
                     onFadeInOut = { scope.launch { settingsRepo.setFadeInOut(it) } },
                     onGapless = { scope.launch { settingsRepo.setGapless(it) } },
                     onBack = { showSettings = false },
                 )
+            }
+
+            showStats -> {
+                BackHandler { showStats = false }
+                StatsScreen(tracks = tracks, onBack = { showStats = false })
             }
 
             showNowPlaying && currentTrack != null -> {
@@ -256,6 +279,8 @@ fun MinePlayerRoot(
                     analyzer = viewModel.analyzer,
                     initialPreset = settings.defaultPreset,
                     initialLyricMode = settings.defaultLyricMode,
+                    flowStrength = settings.flowStrength,
+                    coverLyrics = settings.coverLyrics,
                     sleepRemainingSec = sleepRemaining,
                     onOpenSleep = { showSleepSheet = true },
                     queue = tracks,
@@ -267,6 +292,11 @@ fun MinePlayerRoot(
                     onNext = { viewModel.next() },
                     onPrev = { viewModel.previous() },
                     onSeek = { viewModel.seekTo(it) },
+                    onOpenArtist = {
+                        currentTrack?.let { pendingArtist = it.displayArtist }
+                        browseTab = BrowseTab.ARTISTS
+                        showNowPlaying = false
+                    },
                     onClose = { showNowPlaying = false },
                 )
             }
@@ -282,36 +312,24 @@ fun MinePlayerRoot(
             }
 
             else -> {
-                val currentTrackId = tracks.getOrNull(currentIndex)?.id
+                val currentTrackId = currentTrack?.id
                 val onPlayTrack: (com.mine.player.audio.Track) -> Unit = { t ->
                     val idx = tracks.indexOf(t); if (idx >= 0) viewModel.playTrackAt(idx)
                 }
-                val drawerWidth = (LocalConfiguration.current.screenWidthDp * 0.6f).dp
-                ModalNavigationDrawer(
-                    drawerState = drawerState,
-                    drawerContent = {
-                        ModalDrawerSheet(
-                            modifier = Modifier.width(drawerWidth),
-                            drawerContainerColor = palette.surface,
-                        ) {
-                            AppDrawer(
-                                selected = browseTab,
-                                onSelect = { browseTab = it; scope.launch { drawerState.close() } },
-                                onSettings = { showSettings = true; scope.launch { drawerState.close() } },
-                            )
-                        }
-                    },
-                ) {
+
+                // Shared browse content. `onMenu` is null in rail mode (the rail replaces the drawer's
+                // hamburger), and opens the modal drawer otherwise.
+                val browseContent: @Composable (onMenu: (() -> Unit)?) -> Unit = { onMenu ->
                     Box(modifier = Modifier.fillMaxSize().background(palette.bg)) {
                         when (browseTab) {
                             BrowseTab.SONGS -> LibraryScreen(
                                 tracks = tracks,
-                                currentIndex = currentIndex,
+                                currentTrackId = currentTrackId,
                                 playMode = playMode,
                                 onCyclePlayMode = { viewModel.cyclePlayMode() },
                                 onTrackClick = { viewModel.playTrackAt(it) },
                                 onShuffle = { if (tracks.isNotEmpty()) viewModel.playTrackAt(tracks.indices.random()) },
-                                onMenu = { scope.launch { drawerState.open() } },
+                                onMenu = onMenu,
                                 onOpenShelf = { showCoverWall = true },
                                 onTrackMenu = { menuTrack = it },
                                 sortKeyIndex = settings.sortKey,
@@ -322,17 +340,16 @@ fun MinePlayerRoot(
                             )
                             BrowseTab.ALBUMS -> AlbumsScreen(
                                 tracks, currentTrackId, onPlayTrack,
-                                onMenu = { scope.launch { drawerState.open() } },
+                                onMenu = onMenu,
                                 initialOpenId = pendingAlbumId,
                                 onInitialConsumed = { pendingAlbumId = null },
                             )
                             BrowseTab.ARTISTS -> ArtistsScreen(
                                 tracks, currentTrackId, onPlayTrack,
-                                onMenu = { scope.launch { drawerState.open() } },
+                                onMenu = onMenu,
                                 initialOpen = pendingArtist,
                                 onInitialConsumed = { pendingArtist = null },
                             )
-                            BrowseTab.FOLDERS -> PlaceholderScreen("文件夹") { scope.launch { drawerState.open() } }
                             BrowseTab.PLAYLISTS -> PlaylistsScreen(
                                 playlists = playlists,
                                 tracks = tracks,
@@ -340,7 +357,7 @@ fun MinePlayerRoot(
                                 onPlayTrack = onPlayTrack,
                                 onCreatePlaylist = { pendingAddTrack = null; showCreateDialog = true },
                                 onDeletePlaylist = { playlistStore.delete(it) },
-                                onMenu = { scope.launch { drawerState.open() } },
+                                onMenu = onMenu,
                             )
                         }
 
@@ -358,6 +375,41 @@ fun MinePlayerRoot(
                                 .navigationBarsPadding()
                                 .padding(horizontal = 12.dp, vertical = 12.dp),
                         )
+                    }
+                }
+
+                if (win.useRail) {
+                    // Tablet / landscape: a persistent rail on the left, content fills the rest.
+                    Row(modifier = Modifier.fillMaxSize().background(palette.bg)) {
+                        AppNavRail(
+                            selected = browseTab,
+                            onSelect = { browseTab = it },
+                            onStats = { showStats = true },
+                            onSettings = { showSettings = true },
+                        )
+                        Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+                            browseContent(null)
+                        }
+                    }
+                } else {
+                    val drawerWidth = (LocalConfiguration.current.screenWidthDp * 0.6f).dp
+                    ModalNavigationDrawer(
+                        drawerState = drawerState,
+                        drawerContent = {
+                            ModalDrawerSheet(
+                                modifier = Modifier.width(drawerWidth),
+                                drawerContainerColor = palette.surface,
+                            ) {
+                                AppDrawer(
+                                    selected = browseTab,
+                                    onSelect = { browseTab = it; scope.launch { drawerState.close() } },
+                                    onStats = { showStats = true; scope.launch { drawerState.close() } },
+                                    onSettings = { showSettings = true; scope.launch { drawerState.close() } },
+                                )
+                            }
+                        },
+                    ) {
+                        browseContent { scope.launch { drawerState.open() } }
                     }
                 }
             }

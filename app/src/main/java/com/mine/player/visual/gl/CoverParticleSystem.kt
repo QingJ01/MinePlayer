@@ -25,6 +25,8 @@ data class FrameUniforms(
     val mouseX: Float = 0f,
     val mouseY: Float = 0f,
     val mouseActive: Float = 0f,
+    /** Particle-flow amplitude (uIntensity); must match the settings default (flowStrength). */
+    val intensity: Float = 1.4f,
 )
 
 /**
@@ -194,7 +196,7 @@ class CoverParticleSystem(private val context: Context) {
         p.set1f("uHasCover", hasCover)
 
         // Constants (mirror the original uniform defaults)
-        p.set1f("uIntensity", 0.85f)
+        p.set1f("uIntensity", frame.intensity)
         p.set1f("uDepth", 1.0f)
         p.set1f("uPointScale", 1.0f)
         p.set1f("uSpeed", 1.0f)

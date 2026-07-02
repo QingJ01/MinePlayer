@@ -21,6 +21,7 @@ data class Settings(
     val defaultPreset: Int = 0,     // 0 silk, 1 vinyl, 2 wallpaper
     val defaultLyricMode: Int = 0,  // 0 single, 1 full, 2 off
     val sensitivity: Float = 9f,    // audio reactivity
+    val flowStrength: Float = 1.4f, // particle-flow amplitude (how far particles drift with the melody)
     val minDurationSec: Int = 10,   // hide tracks shorter than this
     val outputSampleRate: Int = 0,  // 0 = follow source, else forced Hz
     val immersiveMode: Boolean = false, // hide status bar app-wide
@@ -33,6 +34,9 @@ data class Settings(
     val blockedFolders: Set<String> = emptySet(), // folders always excluded from the library
     val showNotification: Boolean = true, // show the media / lock-screen playback notification
     val showCloseButton: Boolean = false, // add a close button to the media notification
+    val carBrowsingEnabled: Boolean = true, // expose the browsable library to car head units (Android Auto)
+    val forceLandscape: Boolean = false, // lock the app to landscape (tablet) orientation
+    val coverLyrics: Boolean = true, // in landscape now-playing, show the current lyric over the cover
     val sortKey: Int = 0,           // library sort column (0 title, 1 artist, 2 duration, 3 date)
     val sortAscending: Boolean = true,
 )
@@ -47,6 +51,7 @@ class SettingsRepository(private val context: Context) {
         val preset = intPreferencesKey("default_preset")
         val lyric = intPreferencesKey("default_lyric_mode")
         val sens = floatPreferencesKey("sensitivity")
+        val flowStrength = floatPreferencesKey("flow_strength")
         val minDur = intPreferencesKey("min_duration_sec")
         val sampleRate = intPreferencesKey("output_sample_rate")
         val immersive = booleanPreferencesKey("immersive_mode")
@@ -59,6 +64,9 @@ class SettingsRepository(private val context: Context) {
         val blockedFolders = stringSetPreferencesKey("blocked_folders")
         val showNotification = booleanPreferencesKey("show_notification")
         val showCloseButton = booleanPreferencesKey("show_close_button")
+        val carBrowsing = booleanPreferencesKey("car_browsing_enabled")
+        val forceLandscape = booleanPreferencesKey("force_landscape")
+        val coverLyrics = booleanPreferencesKey("cover_lyrics")
         val sortKey = intPreferencesKey("library_sort_key")
         val sortAscending = booleanPreferencesKey("library_sort_asc")
     }
@@ -72,6 +80,7 @@ class SettingsRepository(private val context: Context) {
             defaultPreset = p[Keys.preset] ?: 0,
             defaultLyricMode = p[Keys.lyric] ?: 0,
             sensitivity = p[Keys.sens] ?: 9f,
+            flowStrength = p[Keys.flowStrength] ?: 1.4f,
             minDurationSec = p[Keys.minDur] ?: 10,
             outputSampleRate = p[Keys.sampleRate] ?: 0,
             immersiveMode = p[Keys.immersive] ?: false,
@@ -84,6 +93,9 @@ class SettingsRepository(private val context: Context) {
             blockedFolders = p[Keys.blockedFolders] ?: emptySet(),
             showNotification = p[Keys.showNotification] ?: true,
             showCloseButton = p[Keys.showCloseButton] ?: false,
+            carBrowsingEnabled = p[Keys.carBrowsing] ?: true,
+            forceLandscape = p[Keys.forceLandscape] ?: false,
+            coverLyrics = p[Keys.coverLyrics] ?: true,
             sortKey = p[Keys.sortKey] ?: 0,
             sortAscending = p[Keys.sortAscending] ?: true,
         )
@@ -96,6 +108,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setDefaultPreset(v: Int) = context.dataStore.edit { it[Keys.preset] = v }.let {}
     suspend fun setDefaultLyricMode(v: Int) = context.dataStore.edit { it[Keys.lyric] = v }.let {}
     suspend fun setSensitivity(v: Float) = context.dataStore.edit { it[Keys.sens] = v }.let {}
+    suspend fun setFlowStrength(v: Float) = context.dataStore.edit { it[Keys.flowStrength] = v }.let {}
     suspend fun setMinDuration(v: Int) = context.dataStore.edit { it[Keys.minDur] = v }.let {}
     suspend fun setOutputSampleRate(v: Int) = context.dataStore.edit { it[Keys.sampleRate] = v }.let {}
     suspend fun setImmersiveMode(v: Boolean) = context.dataStore.edit { it[Keys.immersive] = v }.let {}
@@ -123,6 +136,9 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setShowNotification(v: Boolean) = context.dataStore.edit { it[Keys.showNotification] = v }.let {}
     suspend fun setShowCloseButton(v: Boolean) = context.dataStore.edit { it[Keys.showCloseButton] = v }.let {}
+    suspend fun setCarBrowsing(v: Boolean) = context.dataStore.edit { it[Keys.carBrowsing] = v }.let {}
+    suspend fun setForceLandscape(v: Boolean) = context.dataStore.edit { it[Keys.forceLandscape] = v }.let {}
+    suspend fun setCoverLyrics(v: Boolean) = context.dataStore.edit { it[Keys.coverLyrics] = v }.let {}
 
     suspend fun setSort(key: Int, ascending: Boolean) = context.dataStore.edit {
         it[Keys.sortKey] = key

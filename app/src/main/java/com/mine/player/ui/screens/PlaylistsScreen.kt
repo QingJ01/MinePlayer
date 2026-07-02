@@ -14,7 +14,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -49,7 +53,7 @@ fun PlaylistsScreen(
     onPlayTrack: (Track) -> Unit,
     onCreatePlaylist: () -> Unit,
     onDeletePlaylist: (Long) -> Unit,
-    onMenu: () -> Unit,
+    onMenu: (() -> Unit)? = null,
 ) {
     val p = LocalPalette.current
     var openId by remember { mutableStateOf<Long?>(null) }
@@ -66,7 +70,10 @@ fun PlaylistsScreen(
                     Text("还没有歌单\n点右上角 + 新建", color = p.muted, fontSize = 14.sp)
                 }
             } else {
-                LazyColumn(contentPadding = PaddingValues(bottom = 120.dp)) {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 340.dp),
+                    contentPadding = PaddingValues(bottom = 120.dp),
+                ) {
                     items(playlists, key = { it.id }) { pl ->
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable { openId = pl.id }.padding(horizontal = 16.dp, vertical = 12.dp),
@@ -98,9 +105,14 @@ fun PlaylistsScreen(
                     Text("歌单是空的", color = p.muted, fontSize = 14.sp)
                 }
             } else {
-                LazyColumn(contentPadding = PaddingValues(bottom = 120.dp)) {
-                    items(songs, key = { it.id }) { t ->
-                        TrackListItem(t, isCurrent = t.id == currentTrackId) { onPlayTrack(t) }
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                    LazyColumn(
+                        modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),
+                        contentPadding = PaddingValues(bottom = 120.dp),
+                    ) {
+                        items(songs, key = { it.id }) { t ->
+                            TrackListItem(t, isCurrent = t.id == currentTrackId) { onPlayTrack(t) }
+                        }
                     }
                 }
             }

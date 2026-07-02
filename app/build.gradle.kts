@@ -17,6 +17,20 @@ android {
         vectorDrawables { useSupportLibrary = true }
     }
 
+    // Release signing comes from the environment (CI injects it from repo secrets); local
+    // release builds without these fall back to the debug key so they stay installable.
+    val releaseKeystorePath: String? = System.getenv("MINEPLAYER_KEYSTORE_PATH")
+    signingConfigs {
+        if (releaseKeystorePath != null) {
+            create("release") {
+                storeFile = file(releaseKeystorePath)
+                storePassword = System.getenv("MINEPLAYER_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("MINEPLAYER_KEY_ALIAS") ?: "mineplayer"
+                keyPassword = System.getenv("MINEPLAYER_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -27,6 +41,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = if (releaseKeystorePath != null) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 

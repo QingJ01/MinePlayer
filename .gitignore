@@ -26,3 +26,6 @@ local.properties
 # OS
 .DS_Store
 Thumbs.db
+
+# Release signing (never commit)
+/keystore/

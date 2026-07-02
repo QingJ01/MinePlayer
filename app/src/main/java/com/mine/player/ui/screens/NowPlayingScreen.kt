@@ -10,19 +10,20 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.displayCutoutPadding
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -83,6 +84,7 @@ import com.mine.player.audio.Track
 import com.mine.player.audio.readAudioInfo
 import com.mine.player.lyrics.LyricLine
 import com.mine.player.lyrics.LyricRepository
+import com.mine.player.ui.rememberWindowInfo
 import com.mine.player.ui.components.InfoSheet
 import com.mine.player.ui.components.LyricView
 import com.mine.player.ui.components.QueueSheet
@@ -126,6 +128,8 @@ fun NowPlayingScreen(
     analyzer: AudioAnalyzer,
     initialPreset: Int = 0,
     initialLyricMode: Int = 0,
+    flowStrength: Float = 1.4f,
+    coverLyrics: Boolean = true,
     sleepRemainingSec: Int = 0,
     onOpenSleep: () -> Unit = {},
     queue: List<Track> = emptyList(),
@@ -137,11 +141,13 @@ fun NowPlayingScreen(
     onNext: () -> Unit,
     onPrev: () -> Unit,
     onSeek: (Long) -> Unit,
+    onOpenArtist: () -> Unit = {},
     onClose: () -> Unit,
 ) {
     // Collected here (not at the app root) so only this screen recomposes as position ticks.
     val positionMs by positionFlow.collectAsState()
     val durationMs by durationFlow.collectAsState()
+    val win = rememberWindowInfo()
 
     val context = LocalContext.current
     val renderer = remember { VisualRenderer(context.applicationContext, analyzer) }
@@ -174,7 +180,12 @@ fun NowPlayingScreen(
     var keepScreenOn by remember { mutableStateOf(false) }
 
     // In immersive mode the cover sits nearer the center (no bottom controls crowding it).
-    LaunchedEffect(immersive) { renderer.setCoverLift(if (immersive) 0.05f else 0.28f) }
+    // In landscape the controls dock to the right, so the cover stays vertically centered.
+    LaunchedEffect(immersive, win.isLandscape) {
+        renderer.setCoverLift(if (immersive) 0.05f else if (win.isLandscape) 0.02f else 0.28f)
+    }
+    // Particle-flow amplitude — how far the small particles drift with the melody.
+    LaunchedEffect(flowStrength) { renderer.setFlowStrength(flowStrength) }
     // Back exits immersive first, before closing the now-playing screen.
     BackHandler(enabled = immersive) { immersive = false }
     var audioInfo by remember(track?.id) { mutableStateOf<AudioInfo?>(null) }
@@ -196,8 +207,16 @@ fun NowPlayingScreen(
     val pagerState = rememberPagerState(initialPage = 1) { 3 }
 
     Box(modifier = Modifier.fillMaxSize().background(backdropColor)) {
-        // Fixed particle stage behind everything.
-        VisualStage(renderer = renderer, modifier = Modifier.fillMaxSize())
+        // Fixed particle stage behind everything. In landscape it occupies the left half so the
+        // cover sits on the left and the controls get the right half.
+        VisualStage(
+            renderer = renderer,
+            modifier = if (win.isLandscape && !immersive) {
+                Modifier.fillMaxHeight().fillMaxWidth(0.5f).align(Alignment.CenterStart)
+            } else {
+                Modifier.fillMaxSize()
+            },
+        )
 
         if (immersive) {
             ImmersiveOverlay(
@@ -237,6 +256,8 @@ fun NowPlayingScreen(
                 1 -> CenterPage(
                     renderer = renderer,
                     track = track,
+                    landscape = win.isLandscape,
+                    coverLyrics = coverLyrics,
                     isPlaying = isPlaying,
                     positionMs = positionMs,
                     durationMs = durationMs,
@@ -246,6 +267,7 @@ fun NowPlayingScreen(
                     onNext = onNext,
                     onPrev = onPrev,
                     onSeek = onSeek,
+                    onOpenArtist = onOpenArtist,
                 )
 
                 // 左滑 → 歌词页
@@ -293,6 +315,8 @@ fun NowPlayingScreen(
 private fun CenterPage(
     renderer: VisualRenderer,
     track: Track?,
+    landscape: Boolean,
+    coverLyrics: Boolean,
     isPlaying: Boolean,
     positionMs: Long,
     durationMs: Long,
@@ -302,6 +326,7 @@ private fun CenterPage(
     onNext: () -> Unit,
     onPrev: () -> Unit,
     onSeek: (Long) -> Unit,
+    onOpenArtist: () -> Unit = {},
 ) {
     Box(
         modifier = Modifier
@@ -328,78 +353,154 @@ private fun CenterPage(
                 }
             },
     ) {
-        // Soft scrim so the controls read against a busy stage.
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(320.dp)
-                .background(Brush.verticalGradient(listOf(Color.Transparent, MR.Black.copy(alpha = 0.82f)))),
-        )
-
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp)
-                .padding(bottom = 34.dp)
-                .fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            if (showLyricLine) {
-                SingleLyricView(
-                    lines = lyrics,
-                    positionMs = positionMs,
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                )
-            }
-            Text(
-                text = track?.title ?: "未在播放",
-                color = MR.Ink,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                text = track?.displayArtist ?: "",
-                color = MR.Muted,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            SeekRow(positionMs, durationMs, onSeek)
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onPrev) {
-                    Icon(Icons.Rounded.SkipPrevious, "上一首", tint = MR.Ink2, modifier = Modifier.size(32.dp))
-                }
+        if (landscape) {
+            // Lyrics centered over the cover (left half).
+            if (coverLyrics && lyrics.isNotEmpty()) {
                 Box(
-                    modifier = Modifier
-                        .size(62.dp)
-                        .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(MR.Accent, MR.ChillMint)))
-                        .clickable(onClick = onTogglePlay),
+                    modifier = Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(0.5f),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                        contentDescription = if (isPlaying) "暂停" else "播放",
-                        tint = MR.Black,
-                        modifier = Modifier.size(34.dp),
+                    // Soft band so the lyric stays legible over bright covers.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(Color.Transparent, MR.Black.copy(alpha = 0.34f), Color.Transparent),
+                                ),
+                            ),
+                    )
+                    SingleLyricView(
+                        lines = lyrics,
+                        positionMs = positionMs,
+                        maxFontSize = 22.sp,
+                        translationMaxFontSize = 15.sp,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp),
                     )
                 }
-                IconButton(onClick = onNext) {
-                    Icon(Icons.Rounded.SkipNext, "下一首", tint = MR.Ink2, modifier = Modifier.size(32.dp))
-                }
             }
+            // Landscape: cover on the left half, controls docked to the right half (compact).
+            Box(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .fillMaxWidth(0.5f)
+                    .background(Brush.horizontalGradient(listOf(Color.Transparent, MR.Black.copy(alpha = 0.86f)))),
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .systemBarsPadding()
+                    .fillMaxWidth(0.5f)
+                    .padding(end = 28.dp, start = 20.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CenterControlsContent(
+                    track, isPlaying, positionMs, durationMs, lyrics, showLyricLine,
+                    onTogglePlay, onNext, onPrev, onSeek, onOpenArtist, compact = true,
+                )
+            }
+        } else {
+            // Portrait: controls sit along the bottom over a vertical fade.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .height(320.dp)
+                    .background(Brush.verticalGradient(listOf(Color.Transparent, MR.Black.copy(alpha = 0.82f)))),
+            )
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp)
+                    .padding(bottom = 34.dp)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CenterControlsContent(
+                    track, isPlaying, positionMs, durationMs, lyrics, showLyricLine,
+                    onTogglePlay, onNext, onPrev, onSeek, onOpenArtist,
+                )
+            }
+        }
+    }
+}
+
+/** Shared now-playing controls (lyric line + titles + seek + transport), used by both orientations. */
+@Composable
+private fun ColumnScope.CenterControlsContent(
+    track: Track?,
+    isPlaying: Boolean,
+    positionMs: Long,
+    durationMs: Long,
+    lyrics: List<LyricLine>,
+    showLyricLine: Boolean,
+    onTogglePlay: () -> Unit,
+    onNext: () -> Unit,
+    onPrev: () -> Unit,
+    onSeek: (Long) -> Unit,
+    onOpenArtist: () -> Unit,
+    compact: Boolean = false,
+) {
+    if (showLyricLine && !compact) {
+        SingleLyricView(
+            lines = lyrics,
+            positionMs = positionMs,
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+        )
+    }
+    Text(
+        text = track?.title ?: "未在播放",
+        color = MR.Ink,
+        fontSize = if (compact) 17.sp else 19.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
+    Text(
+        text = track?.displayArtist ?: "",
+        color = MR.Muted,
+        fontSize = 12.sp,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(enabled = track != null) { onOpenArtist() }
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    )
+
+    SeekRow(positionMs, durationMs, onSeek)
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onPrev) {
+            Icon(Icons.Rounded.SkipPrevious, "上一首", tint = MR.Ink2, modifier = Modifier.size(32.dp))
+        }
+        Box(
+            modifier = Modifier
+                .size(if (compact) 54.dp else 62.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(MR.Accent, MR.ChillMint)))
+                .clickable(onClick = onTogglePlay),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                contentDescription = if (isPlaying) "暂停" else "播放",
+                tint = MR.Black,
+                modifier = Modifier.size(if (compact) 30.dp else 34.dp),
+            )
+        }
+        IconButton(onClick = onNext) {
+            Icon(Icons.Rounded.SkipNext, "下一首", tint = MR.Ink2, modifier = Modifier.size(32.dp))
         }
     }
 }
@@ -689,12 +790,10 @@ private fun SeekRow(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) 
     var scrub by remember { mutableStateOf<Float?>(null) }
     val fraction = if (durationMs > 0) (positionMs.toFloat() / durationMs).coerceIn(0f, 1f) else 0f
     val value = scrub ?: fraction
-
-    val scrubbing = scrub != null
-    val thumbSize = if (scrubbing) 15.dp else 11.dp
+    val trackH = if (scrub != null) 5.dp else 3.dp
 
     Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
-        BoxWithConstraints(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(22.dp)
@@ -716,16 +815,8 @@ private fun SeekRow(positionMs: Long, durationMs: Long, onSeek: (Long) -> Unit) 
                 },
             contentAlignment = Alignment.CenterStart,
         ) {
-            val trackW = maxWidth
-            Box(Modifier.fillMaxWidth().height(3.dp).clip(CircleShape).background(MR.Hair2))
-            Box(Modifier.fillMaxWidth(value).height(3.dp).clip(CircleShape).background(MR.Accent))
-            Box(
-                Modifier
-                    .offset(x = (trackW - thumbSize) * value)
-                    .size(thumbSize)
-                    .clip(CircleShape)
-                    .background(MR.Accent),
-            )
+            Box(Modifier.fillMaxWidth().height(trackH).clip(CircleShape).background(MR.Hair2))
+            Box(Modifier.fillMaxWidth(value).height(trackH).clip(CircleShape).background(MR.Accent))
         }
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 2.dp),

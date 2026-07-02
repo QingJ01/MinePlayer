@@ -49,6 +49,9 @@ class VisualRenderer(
     /** Fraction of the visible half-height to raise the cover into the upper-center. */
     @Volatile private var coverLift = 0.28f
 
+    /** Particle-flow amplitude (uIntensity): how far particles drift with the music. */
+    @Volatile private var flowStrength = 1.4f
+
     /** Set the stage background (sRGB 0..1), typically sampled from the album cover. */
     fun setBackground(r: Float, g: Float, b: Float) {
         bgR = r; bgG = g; bgB = b
@@ -57,6 +60,11 @@ class VisualRenderer(
     /** How far to raise the cover (fraction of half the visible height). */
     fun setCoverLift(fraction: Float) {
         coverLift = fraction
+    }
+
+    /** Particle-flow amplitude; higher = particles move more to the melody. */
+    fun setFlowStrength(v: Float) {
+        flowStrength = v
     }
 
     /** Normalized touch (0..1 from top-left); drives the SILK-preset particle push. */
@@ -155,6 +163,7 @@ class VisualRenderer(
             mouseX = mouseX,
             mouseY = mouseY,
             mouseActive = mouseActive,
+            intensity = flowStrength,
         )
         if (skullMode) {
             skull?.draw(proj, view, frame)

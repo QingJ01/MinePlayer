@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
@@ -24,7 +25,9 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -44,14 +47,19 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Code
 import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Tablet
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -62,15 +70,18 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -78,9 +89,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
+import kotlinx.coroutines.launch
 import com.mine.player.BuildConfig
 import com.mine.player.audio.AudioEffects
 import com.mine.player.data.Settings
+import com.mine.player.data.UpdateChecker
 import com.mine.player.ui.theme.AccentOptions
 import com.mine.player.ui.theme.LocalPalette
 import com.mine.player.ui.theme.onAccentFor
@@ -88,7 +102,13 @@ import kotlin.math.roundToInt
 
 private enum class SettingsPage(val title: String) {
     ROOT("设置"), APPEARANCE("外观"), VISUAL("视觉"), LIBRARY("媒体来源"), EQ("音频"),
-    NOTIFICATION("通知"), ABOUT("关于")
+    NOTIFICATION("通知"), CAR("车机模式"), TABLET("平板模式"), ABOUT("关于"), LICENSES("开源与致谢")
+}
+
+/** Where the header/back gesture returns from a given page (sub-pages return to their parent). */
+private fun SettingsPage.parent(): SettingsPage = when (this) {
+    SettingsPage.LICENSES -> SettingsPage.ABOUT
+    else -> SettingsPage.ROOT
 }
 
 @Composable
@@ -102,6 +122,7 @@ fun SettingsScreen(
     onDefaultPreset: (Int) -> Unit,
     onDefaultLyric: (Int) -> Unit,
     onSensitivity: (Float) -> Unit,
+    onFlowStrength: (Float) -> Unit,
     onMinDuration: (Int) -> Unit,
     onRescan: () -> Unit,
     scanning: Boolean,
@@ -121,26 +142,34 @@ fun SettingsScreen(
     onGapless: (Boolean) -> Unit,
     onToggleNotification: (Boolean) -> Unit,
     onToggleCloseButton: (Boolean) -> Unit,
+    onToggleCar: (Boolean) -> Unit,
+    onForceLandscape: (Boolean) -> Unit,
+    onCoverLyrics: (Boolean) -> Unit,
     onBack: () -> Unit,
 ) {
     val p = LocalPalette.current
     var page by remember { mutableStateOf(SettingsPage.ROOT) }
 
-    BackHandler(enabled = page != SettingsPage.ROOT) { page = SettingsPage.ROOT }
+    BackHandler(enabled = page != SettingsPage.ROOT) { page = page.parent() }
 
     Column(modifier = Modifier.fillMaxSize().background(p.bg).statusBarsPadding()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = { if (page == SettingsPage.ROOT) onBack() else page = SettingsPage.ROOT }) {
+            IconButton(onClick = { if (page == SettingsPage.ROOT) onBack() else page = page.parent() }) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, "返回", tint = p.ink)
             }
             Text(page.title, color = p.ink, fontSize = 24.sp, fontWeight = FontWeight.Bold)
         }
 
         Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+            modifier = Modifier
+                .fillMaxHeight()
+                .widthIn(max = 640.dp) // keep settings readable (centered) on tablets / landscape
+                .fillMaxWidth()
+                .align(Alignment.CenterHorizontally)
+                .verticalScroll(rememberScrollState())
                 .navigationBarsPadding().padding(horizontal = 16.dp),
         ) {
             when (page) {
@@ -157,7 +186,11 @@ fun SettingsScreen(
                         InsetDivider()
                         NavRow(Icons.Rounded.Notifications, "通知", "通知栏与锁屏控件") { page = SettingsPage.NOTIFICATION }
                         InsetDivider()
-                        NavRow(Icons.Rounded.Info, "关于", "版本与致谢") { page = SettingsPage.ABOUT }
+                        NavRow(Icons.Rounded.DirectionsCar, "车机模式", "Android Auto 车载浏览") { page = SettingsPage.CAR }
+                        InsetDivider()
+                        NavRow(Icons.Rounded.Tablet, "平板模式", "锁定横屏、封面歌词") { page = SettingsPage.TABLET }
+                        InsetDivider()
+                        NavRow(Icons.Rounded.Info, "关于", "版本、更新检测、开源致谢") { page = SettingsPage.ABOUT }
                     }
                 }
 
@@ -165,7 +198,7 @@ fun SettingsScreen(
                     settings, onToggleFollowSystem, onToggleDark, onToggleImmersive,
                     onAccentFollowSystem, onAccentColor,
                 )
-                SettingsPage.VISUAL -> VisualPage(settings, onDefaultPreset, onDefaultLyric, onSensitivity)
+                SettingsPage.VISUAL -> VisualPage(settings, onDefaultPreset, onDefaultLyric, onSensitivity, onFlowStrength)
                 SettingsPage.LIBRARY -> MediaSourcePage(
                     settings, onRescan, scanning, trackCount, onToggleMediaStore, onMinDuration,
                     onAddCustomFolder, onRemoveCustomFolder, onAddBlockedFolder, onRemoveBlockedFolder,
@@ -175,7 +208,10 @@ fun SettingsScreen(
                     onExclusiveFocus, onReplayGain, onFadeInOut, onGapless,
                 )
                 SettingsPage.NOTIFICATION -> NotificationPage(settings, onToggleNotification, onToggleCloseButton)
-                SettingsPage.ABOUT -> AboutPage()
+                SettingsPage.CAR -> CarPage(settings, onToggleCar)
+                SettingsPage.TABLET -> TabletPage(settings, onForceLandscape, onCoverLyrics)
+                SettingsPage.ABOUT -> AboutPage(onOpenLibraries = { page = SettingsPage.LICENSES })
+                SettingsPage.LICENSES -> LicensesPage()
             }
             Spacer(Modifier.height(40.dp))
         }
@@ -277,6 +313,7 @@ private fun VisualPage(
     onDefaultPreset: (Int) -> Unit,
     onDefaultLyric: (Int) -> Unit,
     onSensitivity: (Float) -> Unit,
+    onFlowStrength: (Float) -> Unit,
 ) {
     Section("默认预设")
     Card { ChipBlock(listOf("丝绸", "黑胶", "星球", "隧道"), settings.defaultPreset, onDefaultPreset) }
@@ -284,9 +321,20 @@ private fun VisualPage(
     Section("默认歌词模式")
     Card { ChipBlock(listOf("单句", "整屏", "封面"), settings.defaultLyricMode, onDefaultLyric) }
 
-    Section("律动灵敏度")
+    Section("律动强度")
     Card {
-        SliderBlock("灵敏度", settings.sensitivity.roundToInt().toString(), settings.sensitivity, 3f..18f, onSensitivity)
+        SliderBlock("强度", settings.sensitivity.roundToInt().toString(), settings.sensitivity, 3f..18f, onSensitivity)
+    }
+
+    Section("粒子流动幅度")
+    Card {
+        SliderBlock(
+            "流动幅度",
+            "${(settings.flowStrength * 10).roundToInt() / 10f}×",
+            settings.flowStrength,
+            0.6f..3f,
+            onFlowStrength,
+        )
     }
 }
 
@@ -432,14 +480,212 @@ private fun NotificationPage(
 }
 
 @Composable
-private fun AboutPage() {
+private fun CarPage(settings: Settings, onToggleCar: (Boolean) -> Unit) {
+    val p = LocalPalette.current
+    Section("车机 · Android Auto")
+    Card {
+        SwitchRow(
+            "车载浏览",
+            "连接车机（Android Auto）后，在车屏上按 歌曲 / 专辑 / 艺术家 浏览并播放本地曲库；关闭后车机看不到曲库",
+            settings.carBrowsingEnabled, onToggleCar,
+        )
+    }
+    Text(
+        "使用方法：\n" +
+            "1. 手机安装 Android Auto，进其设置连点版本号开启开发者选项 → 打开「未知来源」，MinePlayer 才会在未上架时出现\n" +
+            "2. 用数据线连接车机，或用电脑上的 DHU 模拟车机\n" +
+            "3. 在车屏媒体应用里选择 MinePlayer 即可浏览播放",
+        color = p.muted, fontSize = 12.sp, lineHeight = 18.sp,
+        modifier = Modifier.padding(start = 6.dp, top = 12.dp),
+    )
+}
+
+@Composable
+private fun TabletPage(
+    settings: Settings,
+    onForceLandscape: (Boolean) -> Unit,
+    onCoverLyrics: (Boolean) -> Unit,
+) {
+    val p = LocalPalette.current
+    Section("平板 / 横屏")
+    Card {
+        SwitchRow(
+            "锁定横屏",
+            "始终以横屏（平板）布局运行，适合平板或横置的车机 / 支架",
+            settings.forceLandscape, onForceLandscape,
+        )
+        InsetDivider(inset = false)
+        SwitchRow(
+            "封面歌词",
+            "横屏播放页在左侧封面中央显示当前歌词",
+            settings.coverLyrics, onCoverLyrics,
+        )
+    }
+    Text(
+        "横屏 / 大屏下：左侧常驻导航栏、专辑与曲库多列、播放页封面在左控制在右。竖屏仍是手机布局。",
+        color = p.muted, fontSize = 12.sp, lineHeight = 18.sp,
+        modifier = Modifier.padding(start = 6.dp, top = 12.dp),
+    )
+}
+
+@Composable
+private fun AboutPage(onOpenLibraries: () -> Unit) {
+    val p = LocalPalette.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val appIcon = remember {
+        context.packageManager.getApplicationIcon(context.packageName).toBitmap().asImageBitmap()
+    }
+    fun open(url: String) {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
+
+    // GitHub-release update check (auto-runs once, tap to retry / open the release).
+    var checking by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var latestUrl by remember { mutableStateOf<String?>(null) }
+    fun checkUpdate(force: Boolean = false) {
+        if (checking) return
+        checking = true; status = null; latestUrl = null
+        scope.launch {
+            val r = UpdateChecker.check(force)
+            checking = false
+            when (r) {
+                is UpdateChecker.Result.Failed -> status = "检查失败，点按重试"
+                is UpdateChecker.Result.NoReleases -> status = "已是最新版本"
+                is UpdateChecker.Result.Found -> {
+                    if (UpdateChecker.isNewer(r.release.tag, BuildConfig.VERSION_NAME)) {
+                        status = "发现新版本 ${r.release.tag}，点按下载"; latestUrl = r.release.url
+                    } else {
+                        status = "已是最新版本"
+                    }
+                }
+            }
+        }
+    }
+    LaunchedEffect(Unit) { checkUpdate() }
+
     Section("关于")
     Card {
-        InfoRow("版本", "MinePlayer ${BuildConfig.VERSION_NAME}")
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Image(bitmap = appIcon, contentDescription = null, modifier = Modifier.size(56.dp).clip(RoundedCornerShape(15.dp)))
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text("MinePlayer", color = p.ink, fontSize = 19.sp, fontWeight = FontWeight.Bold)
+                Text("版本 ${BuildConfig.VERSION_NAME}", color = p.muted, fontSize = 13.sp, modifier = Modifier.padding(top = 3.dp))
+            }
+        }
         InsetDivider(inset = false)
-        InfoRow("说明", "安卓原生版·本地播放 + 沉浸粒子视觉")
+        InfoRow("简介", "原生 Android 本地音乐播放器 · 沉浸粒子视觉，音乐全部来自本机")
+    }
+
+    Section("更新")
+    Card {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { if (latestUrl != null) open(latestUrl!!) else checkUpdate(force = true) }
+                .heightIn(min = 56.dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                Text("检查更新", color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    when {
+                        checking -> "检查中…"
+                        status != null -> status!!
+                        else -> "当前 v${BuildConfig.VERSION_NAME}"
+                    },
+                    color = if (latestUrl != null) p.accent else p.muted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+            }
+            when {
+                checking -> CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = p.accent)
+                latestUrl != null -> Icon(Icons.Rounded.SystemUpdate, "下载新版本", tint = p.accent, modifier = Modifier.size(20.dp))
+                else -> Icon(Icons.Rounded.Refresh, "重新检查", tint = p.muted, modifier = Modifier.size(20.dp))
+            }
+        }
+    }
+
+    Section("开源与致谢")
+    Card {
+        NavRow(Icons.Rounded.Code, "开源与致谢", "原项目与使用的开源库") { onOpenLibraries() }
+    }
+}
+
+@Composable
+private fun LicensesPage() {
+    val p = LocalPalette.current
+    val context = LocalContext.current
+    fun open(url: String) {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
+
+    Section("原项目")
+    Card {
+        LinkRow(
+            "Mineradio",
+            "粒子视觉风格移植自此项目（Web / Electron 版）",
+            "github.com/XxHuberrr/Mineradio",
+        ) { open("https://github.com/XxHuberrr/Mineradio") }
+    }
+
+    Section("开源库")
+    Card {
+        LinkRow("Jetpack Compose · Material 3", "界面框架", "developer.android.com/jetpack/compose") {
+            open("https://developer.android.com/jetpack/compose")
+        }
         InsetDivider(inset = false)
-        InfoRow("致谢", "移植自 XxHuberrr/Mineradio")
+        LinkRow("AndroidX Media3（ExoPlayer / Session）", "音频播放与媒体会话", "github.com/androidx/media") {
+            open("https://github.com/androidx/media")
+        }
+        InsetDivider(inset = false)
+        LinkRow("AndroidX Lifecycle · Activity · Core-KTX", "生命周期与基础组件", "developer.android.com/jetpack/androidx") {
+            open("https://developer.android.com/jetpack/androidx")
+        }
+        InsetDivider(inset = false)
+        LinkRow("DataStore Preferences", "设置持久化", "developer.android.com/topic/libraries/architecture/datastore") {
+            open("https://developer.android.com/topic/libraries/architecture/datastore")
+        }
+        InsetDivider(inset = false)
+        LinkRow("Kotlin Coroutines", "异步与数据流", "github.com/Kotlin/kotlinx.coroutines") {
+            open("https://github.com/Kotlin/kotlinx.coroutines")
+        }
+        InsetDivider(inset = false)
+        LinkRow("Guava", "ListenableFuture（媒体会话异步）", "github.com/google/guava") {
+            open("https://github.com/google/guava")
+        }
+        InsetDivider(inset = false)
+        LinkRow("Material Icons Extended", "图标集", "fonts.google.com/icons") {
+            open("https://fonts.google.com/icons")
+        }
+    }
+    Text(
+        "以上开源库均以各自的开源许可证发布（多为 Apache-2.0）。粒子视觉引擎基于 OpenGL ES 2.0 / GLSL 自研。",
+        color = p.muted, fontSize = 12.sp, lineHeight = 18.sp,
+        modifier = Modifier.padding(start = 6.dp, top = 12.dp, end = 6.dp),
+    )
+}
+
+@Composable
+private fun LinkRow(title: String, subtitle: String, host: String, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    Row(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(title, color = p.ink, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+            Text(subtitle, color = p.muted, fontSize = 12.sp, modifier = Modifier.padding(top = 2.dp))
+            Text(host, color = p.accent, fontSize = 11.sp, modifier = Modifier.padding(top = 2.dp))
+        }
+        Icon(Icons.Rounded.Link, "打开链接", tint = p.muted, modifier = Modifier.size(18.dp))
     }
 }
 

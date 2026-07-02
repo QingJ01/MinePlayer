@@ -3,6 +3,7 @@ package com.mine.player.audio
 import android.content.ContentUris
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,16 +20,19 @@ class LocalLibraryRepository(private val context: Context) {
         blockedFolders: Set<String> = emptySet(),
     ): List<Track> = withContext(Dispatchers.IO) {
         val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        val projection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.ALBUM,
-            MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.DATE_ADDED,
-            MediaStore.Audio.Media.DATA,
-        )
+        // BITRATE is only a valid query column on API 30+ (older DBs throw if it's requested).
+        val hasBitrate = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        val projection = buildList {
+            add(MediaStore.Audio.Media._ID)
+            add(MediaStore.Audio.Media.TITLE)
+            add(MediaStore.Audio.Media.ARTIST)
+            add(MediaStore.Audio.Media.ALBUM)
+            add(MediaStore.Audio.Media.ALBUM_ID)
+            add(MediaStore.Audio.Media.DURATION)
+            add(MediaStore.Audio.Media.DATE_ADDED)
+            add(MediaStore.Audio.Media.DATA)
+            if (hasBitrate) add(MediaStore.Audio.Media.BITRATE)
+        }.toTypedArray()
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0 AND " +
             "${MediaStore.Audio.Media.DURATION} >= $minDurationMs"
         val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
@@ -47,6 +51,7 @@ class LocalLibraryRepository(private val context: Context) {
             val durationCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val dateCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
             val dataCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+            val bitrateCol = if (hasBitrate) c.getColumnIndex(MediaStore.Audio.Media.BITRATE) else -1
 
             val hasWhitelist = whitelist.isNotEmpty()
             while (c.moveToNext()) {
@@ -74,6 +79,7 @@ class LocalLibraryRepository(private val context: Context) {
                     albumArtUri = ContentUris.withAppendedId(albumArtBase, albumId),
                     dateAdded = c.getLong(dateCol),
                     filePath = path,
+                    bitrate = if (bitrateCol >= 0) c.getInt(bitrateCol) else 0,
                 )
             }
         }

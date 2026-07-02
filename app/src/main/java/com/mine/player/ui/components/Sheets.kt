@@ -44,7 +44,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mine.player.audio.AudioInfo
+import com.mine.player.audio.QualityTier
 import com.mine.player.audio.Track
+import com.mine.player.audio.qualityTier
+import com.mine.player.audio.tier
 import com.mine.player.data.Playlist
 import com.mine.player.ui.theme.LocalPalette
 
@@ -120,7 +123,8 @@ fun TrackInfoSheet(track: Track, audioInfo: AudioInfo?, onDismiss: () -> Unit) {
             Row(modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 AlbumThumb(track = track, sizeDp = 46.dp, corner = 10.dp)
                 Spacer(Modifier.width(14.dp))
-                Text(track.title, color = p.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(track.title, color = p.ink, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                QualityBadge(audioInfo?.tier ?: track.qualityTier(), Modifier.padding(start = 10.dp))
             }
             InfoLine("艺术家", track.displayArtist)
             InfoLine("专辑", track.album.ifBlank { "未知专辑" })

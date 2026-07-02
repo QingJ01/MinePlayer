@@ -6,7 +6,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
@@ -48,6 +47,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private val _currentIndex = MutableStateFlow(-1)
     val currentIndex: StateFlow<Int> = _currentIndex.asStateFlow()
 
+    // The playing item's mediaId ("123" from the app queue, "song:123" from a car browser).
+    // Tracks are resolved by id, not queue position: a car controller may replace the session
+    // queue with items the ViewModel's list doesn't mirror.
+    private val _currentMediaId = MutableStateFlow<String?>(null)
+
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying.asStateFlow()
 
@@ -75,8 +79,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private var volumeJob: Job? = null
 
     val currentTrack: StateFlow<Track?> =
-        combine(_tracks, _currentIndex) { list, idx -> list.getOrNull(idx) }
-            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+        combine(_tracks, _currentMediaId) { list, mediaId ->
+            val trackId = mediaId?.removePrefix(CarBrowseTree.SONG_PREFIX)?.toLongOrNull()
+            trackId?.let { id -> list.firstOrNull { it.id == id } }
+        }.stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
@@ -85,6 +91,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            _currentMediaId.value = mediaItem?.mediaId
             controller?.let {
                 _currentIndex.value = it.currentMediaItemIndex
                 _durationMs.value = it.duration.coerceAtLeast(0L)
@@ -115,6 +122,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 c.addListener(playerListener)
                 _isPlaying.value = c.isPlaying
                 _currentIndex.value = c.currentMediaItemIndex
+                _currentMediaId.value = c.currentMediaItem?.mediaId
                 _durationMs.value = c.duration.coerceAtLeast(0L)
                 applyPlayMode(c, _playMode.value)
                 c.setPlaybackSpeed(_playbackSpeed.value)
@@ -154,6 +162,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             val pos = stateStore.positionMs()
             c.seekTo(savedIndex, pos)
             _currentIndex.value = savedIndex
+            _currentMediaId.value = list[savedIndex].id.toString()
             _positionMs.value = pos
         }
     }
@@ -300,19 +309,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** MediaItem carrying metadata so the system media notification shows title / artist / art. */
-    private fun mediaItemFor(track: Track): MediaItem {
-        val metadata = MediaMetadata.Builder()
-            .setTitle(track.title)
-            .setArtist(track.displayArtist)
-            .setAlbumTitle(track.album.ifBlank { null })
-            .apply { track.albumArtUri?.let { setArtworkUri(it) } }
-            .build()
-        return MediaItem.Builder()
-            .setMediaId(track.id.toString())
-            .setUri(track.uri)
-            .setMediaMetadata(metadata)
-            .build()
-    }
+    private fun mediaItemFor(track: Track): MediaItem = CarBrowseTree.songItem(track)
 
     /** minutes <= 0 cancels; otherwise pause playback after that many minutes. */
     fun setSleepTimer(minutes: Int) {

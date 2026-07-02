@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.lerp
 import com.mine.player.audio.AlbumArtLoader
 import com.mine.player.audio.Track
+import com.mine.player.ui.rememberWindowInfo
 import com.mine.player.ui.components.CoverImage
 import com.mine.player.ui.theme.LocalPalette
 import com.mine.player.ui.theme.Palette
@@ -96,49 +98,53 @@ fun CoverWallScreen(
         }
         Box(Modifier.fillMaxSize().background(p.bg.copy(alpha = 0.68f)))
 
+        // Landscape is short (≈360dp tall): let the cover flow take the leftover height instead of a
+        // fixed 300dp, and size each cover by height so it always fits.
+        val landscape = rememberWindowInfo().isLandscape
         Column(
             modifier = Modifier.fillMaxSize().statusBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             WallHeader(onClose)
-            Spacer(Modifier.weight(1f))
+            if (!landscape) Spacer(Modifier.weight(1f))
 
             HorizontalPager(
                 state = pagerState,
-                contentPadding = PaddingValues(horizontal = 76.dp),
-                modifier = Modifier.fillMaxWidth().height(300.dp),
+                contentPadding = PaddingValues(horizontal = if (landscape) 150.dp else 76.dp),
+                modifier = if (landscape) Modifier.fillMaxWidth().weight(1f) else Modifier.fillMaxWidth().height(300.dp),
             ) { page ->
                 val offset = (pagerState.currentPage - page) + pagerState.currentPageOffsetFraction
                 val absO = abs(offset).coerceIn(0f, 1f)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(1f)
-                        .graphicsLayer {
-                            rotationY = (offset * 34f).coerceIn(-52f, 52f)
-                            cameraDistance = 16f * density
-                            val s = lerp(1f, 0.78f, absO)
-                            scaleX = s
-                            scaleY = s
-                            alpha = lerp(1f, 0.5f, absO)
-                            shape = RoundedCornerShape(18.dp)
-                            clip = true
-                            shadowElevation = lerp(18f, 0f, absO) * density
-                        }
-                        .clickable {
-                            if (page == pagerState.currentPage) { onPlay(page); onClose() }
-                            else scope.launch { pagerState.animateScrollToPage(page) }
-                        },
-                ) {
-                    CoverImage(track = tracks[page], modifier = Modifier.fillMaxSize(), corner = 18.dp, loadPx = 512)
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Box(
+                        modifier = (if (landscape) Modifier.fillMaxHeight() else Modifier.fillMaxWidth())
+                            .aspectRatio(1f)
+                            .graphicsLayer {
+                                rotationY = (offset * 34f).coerceIn(-52f, 52f)
+                                cameraDistance = 16f * density
+                                val s = lerp(1f, 0.78f, absO)
+                                scaleX = s
+                                scaleY = s
+                                alpha = lerp(1f, 0.5f, absO)
+                                shape = RoundedCornerShape(18.dp)
+                                clip = true
+                                shadowElevation = lerp(18f, 0f, absO) * density
+                            }
+                            .clickable {
+                                if (page == pagerState.currentPage) { onPlay(page); onClose() }
+                                else scope.launch { pagerState.animateScrollToPage(page) }
+                            },
+                    ) {
+                        CoverImage(track = tracks[page], modifier = Modifier.fillMaxSize(), corner = 18.dp, loadPx = 512)
+                    }
                 }
             }
 
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.height(if (landscape) 10.dp else 26.dp))
             Text(
                 text = cur.title,
                 color = p.ink,
-                fontSize = 19.sp,
+                fontSize = if (landscape) 16.sp else 19.sp,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -154,13 +160,13 @@ fun CoverWallScreen(
                 overflow = TextOverflow.Ellipsis,
             )
 
-            Spacer(Modifier.height(26.dp))
+            Spacer(Modifier.height(if (landscape) 12.dp else 26.dp))
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
                     .background(p.accent)
                     .clickable { onPlay(pagerState.currentPage); onClose() }
-                    .padding(horizontal = 36.dp, vertical = 13.dp),
+                    .padding(horizontal = 36.dp, vertical = if (landscape) 9.dp else 13.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
@@ -169,7 +175,8 @@ fun CoverWallScreen(
                 Text("播放", color = p.onAccent, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
             }
 
-            Spacer(Modifier.weight(1.3f))
+            Spacer(Modifier.height(if (landscape) 12.dp else 0.dp))
+            if (!landscape) Spacer(Modifier.weight(1.3f))
         }
     }
 }

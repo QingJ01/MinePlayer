@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.aspectRatio
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -24,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -43,7 +46,7 @@ fun AlbumsScreen(
     tracks: List<Track>,
     currentTrackId: Long?,
     onPlayTrack: (Track) -> Unit,
-    onMenu: () -> Unit,
+    onMenu: (() -> Unit)? = null,
     initialOpenId: Long? = null,
     onInitialConsumed: () -> Unit = {},
 ) {
@@ -66,7 +69,8 @@ fun AlbumsScreen(
                 Text("${albums.size}", color = p.muted, fontSize = 14.sp, modifier = Modifier.padding(end = 12.dp))
             }
             LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+                // Adaptive: 2 covers on a phone, more as the screen widens (landscape / tablet).
+                columns = GridCells.Adaptive(minSize = 168.dp),
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 120.dp),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -85,9 +89,14 @@ fun AlbumsScreen(
         } else {
             BrowseHeader(cur.name, onBack = { open = null })
             val songs = remember(cur, tracks) { tracks.filter { it.albumId == cur.id } }
-            LazyColumn(contentPadding = PaddingValues(bottom = 120.dp)) {
-                items(songs, key = { it.id }) { t ->
-                    TrackListItem(t, isCurrent = t.id == currentTrackId) { onPlayTrack(t) }
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                LazyColumn(
+                    modifier = Modifier.widthIn(max = 760.dp).fillMaxWidth(),
+                    contentPadding = PaddingValues(bottom = 120.dp),
+                ) {
+                    items(songs, key = { it.id }) { t ->
+                        TrackListItem(t, isCurrent = t.id == currentTrackId) { onPlayTrack(t) }
+                    }
                 }
             }
         }

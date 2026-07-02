@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -50,8 +52,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mine.player.audio.PlayMode
+import com.mine.player.audio.QualityTier
 import com.mine.player.audio.Track
+import com.mine.player.audio.qualityTier
 import com.mine.player.ui.components.AlbumThumb
+import com.mine.player.ui.components.QualityBadge
 import com.mine.player.ui.components.formatTime
 import com.mine.player.ui.theme.LocalPalette
 
@@ -63,12 +68,12 @@ private enum class SortKey(val label: String) {
 @Composable
 fun LibraryScreen(
     tracks: List<Track>,
-    currentIndex: Int,
+    currentTrackId: Long?,
     playMode: PlayMode,
     onCyclePlayMode: () -> Unit,
     onTrackClick: (Int) -> Unit,
     onShuffle: () -> Unit,
-    onMenu: () -> Unit,
+    onMenu: (() -> Unit)? = null,
     onOpenShelf: () -> Unit,
     onTrackMenu: (Track) -> Unit,
     sortKeyIndex: Int,
@@ -84,7 +89,6 @@ fun LibraryScreen(
     val ascending = sortAscending
     var sortMenu by remember { mutableStateOf(false) }
 
-    val currentTrackId = tracks.getOrNull(currentIndex)?.id
     val filtered = remember(tracks, query, sortKey, ascending) {
         val base = if (query.isBlank()) tracks
         else tracks.filter { it.title.contains(query, true) || it.artist.contains(query, true) || it.album.contains(query, true) }
@@ -104,7 +108,11 @@ fun LibraryScreen(
             modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, top = 8.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onMenu) { Icon(Icons.Rounded.Menu, "菜单", tint = p.ink) }
+            if (onMenu != null) {
+                IconButton(onClick = onMenu) { Icon(Icons.Rounded.Menu, "菜单", tint = p.ink) }
+            } else {
+                Spacer(Modifier.width(6.dp))
+            }
             if (searching) {
                 BasicTextField(
                     value = query,
@@ -144,9 +152,14 @@ fun LibraryScreen(
             IconButton(onClick = { sortMenu = true }) { Icon(Icons.Rounded.SwapVert, "排序", tint = p.ink) }
         }
 
-        LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = contentPadding) {
+        // Adaptive columns: a single list on a phone, two-plus once the screen is wide (landscape / tablet).
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = 360.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = contentPadding,
+        ) {
             if (filtered.isEmpty()) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(
                         text = if (tracks.isEmpty()) "没有扫描到本地音乐" else "没有匹配的曲目",
                         color = p.muted,
@@ -205,14 +218,18 @@ private fun TrackRow(track: Track, isCurrent: Boolean, onClick: () -> Unit, onMe
         AlbumThumb(track = track, sizeDp = 50.dp, corner = 12.dp)
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = track.title,
-                color = p.ink,
-                fontSize = 16.sp,
-                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = track.title,
+                    color = p.ink,
+                    fontSize = 16.sp,
+                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                QualityBadge(track.qualityTier(), Modifier.padding(start = 6.dp))
+            }
             Text(
                 text = buildString {
                     append(track.displayArtist)
