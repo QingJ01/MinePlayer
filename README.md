@@ -70,15 +70,18 @@
 
 ## 🖼️ 界面预览
 
-> 截图与录屏待补充 —— 放置于 `docs/screenshots/` 后在此引用。
-
-<!--
-<div align="center">
-  <img src="docs/screenshots/now-playing.png" width="30%" />
-  <img src="docs/screenshots/library.png" width="30%" />
-  <img src="docs/screenshots/settings.png" width="30%" />
-</div>
--->
+<table>
+  <tr>
+    <td align="center" width="33%"><img src="docs/screenshots/02-nowplaying.png" width="230"/><br/><sub>粒子视觉播放</sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/03-page-left.png" width="230"/><br/><sub>全屏滚动歌词</sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/06-settings.png" width="230"/><br/><sub>设置</sub></td>
+  </tr>
+  <tr>
+    <td align="center" width="33%"><img src="docs/screenshots/01-main.png" width="230"/><br/><sub>曲库（音质标识）</sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/04-drawer.png" width="230"/><br/><sub>导航</sub></td>
+    <td align="center" width="33%"><img src="docs/screenshots/07-albums.png" width="230"/><br/><sub>专辑</sub></td>
+  </tr>
+</table>
 
 ## 🏗️ 技术架构
 
@@ -135,17 +138,6 @@ export MINEPLAYER_KEY_PASSWORD=******
 ./gradlew :app:assembleRelease
 # 产物：app/build/outputs/apk/release/app-release.apk
 ```
-
-## 🚀 发布（CI/CD）
-
-推送 `v*` 标签即触发 [GitHub Actions](.github/workflows/release.yml)：构建签名 release APK 并自动创建 GitHub Release。
-
-```bash
-git tag -a v0.1.0 -m "MinePlayer v0.1.0"
-git push origin v0.1.0
-```
-
-签名密钥库与口令保存在仓库 Secrets（`KEYSTORE_BASE64` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD`），工作流运行时解码后注入上述环境变量。
 
 ## 🔐 权限说明
 
