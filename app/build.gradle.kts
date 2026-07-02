@@ -36,7 +36,8 @@ android {
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true      // R8: strip unused code (e.g. thousands of unused icons)
+            isShrinkResources = true    // drop resources no kept code references
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
